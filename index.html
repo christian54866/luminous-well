@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: monospace; }
+        #orb { width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, #fff, #00f); box-shadow: 0 0 50px #00f; transition: transform 0.1s; }
+        #label { position: absolute; bottom: 20px; color: #444; }
+    </style>
+</head>
+<body>
+    <div id="orb"></div>
+    <div id="label">TAP TO WAKE THE WELL</div>
+
+    <script>
+        let ctx, osc, gain, filter;
+        let started = false;
+
+        // Wake up the audio (iPhone requires a tap)
+        document.body.addEventListener('touchstart', () => {
+            if (started) return;
+            ctx = new (window.AudioContext || window.webkitAudioContext)();
+            osc = ctx.createOscillator();
+            gain = ctx.createGain();
+            filter = ctx.createBiquadFilter();
+
+            osc.type = 'sine'; // Pure tone
+            filter.type = 'lowpass';
+            
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.start();
+            gain.gain.value = 0.1;
+            started = true;
+            document.getElementById('label').innerText = "TILT & SHADE";
+        });
+
+        // The Unique Control: Movement
+        window.addEventListener('deviceorientation', (e) => {
+            if (!started) return;
+            
+            // Pitch based on Tilt (Gamma)
+            let pitch = Math.abs(e.gamma) * 10 + 200; 
+            osc.frequency.setTargetAtTime(pitch, ctx.currentTime, 0.1);
+
+            // Visual Glow Shift
+            let hue = Math.abs(e.gamma) * 2;
+            document.getElementById('orb').style.filter = `hue-rotate(${hue}deg)`;
+            document.getElementById('orb').style.transform = `scale(${1 + Math.abs(e.beta)/100})`;
+        });
+
+        // The Unique Control: Light (Using a hack: screen touch pressure/area)
+        // Since mobile browsers block raw light sensor data, we use 'touch size'
+        window.addEventListener('touchmove', (e) => {
+            if (!started) return;
+            let val = e.touches[0].pageY / window.innerHeight;
+            filter.frequency.setTargetAtTime(val * 5000, ctx.currentTime, 0.1);
+        });
+    </script>
+</body>
+</html>
