@@ -1,63 +1,114 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LUMINOUS WELL</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: monospace; }
-        #orb { width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, #fff, #00f); box-shadow: 0 0 50px #00f; transition: transform 0.1s; }
-        #label { position: absolute; bottom: 20px; color: #444; }
+        body { 
+            margin: 0; 
+            background: #000; 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column;
+            justify-content: center; 
+            align-items: center; 
+            overflow: hidden;
+            touch-action: none; /* Prevents accidental scrolling/refreshing */
+        }
+        #orb { 
+            width: 60vw; 
+            height: 60vw; 
+            max-width: 300px;
+            max-height: 300px;
+            border-radius: 50%; 
+            background: radial-gradient(circle, #fff 0%, #00d4ff 50%, #002fcc 100%); 
+            box-shadow: 0 0 80px #00d4ff;
+            transition: transform 0.05s linear;
+        }
+        #btn {
+            padding: 20px 40px;
+            background: none;
+            border: 2px solid #00d4ff;
+            color: #00d4ff;
+            font-family: 'Courier New', monospace;
+            font-size: 1.2rem;
+            letter-spacing: 3px;
+            cursor: pointer;
+            z-index: 10;
+        }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
-    <div id="orb"></div>
-    <div id="label">TAP TO WAKE THE WELL</div>
+
+    <button id="btn">INITIALIZE</button>
+    <div id="orb" class="hidden"></div>
 
     <script>
-        let ctx, osc, gain, filter;
-        let started = false;
+        let audioCtx, osc, gain, filter;
 
-        // Wake up the audio (iPhone requires a tap)
-        document.body.addEventListener('touchstart', () => {
-            if (started) return;
-            ctx = new (window.AudioContext || window.webkitAudioContext)();
-            osc = ctx.createOscillator();
-            gain = ctx.createGain();
-            filter = ctx.createBiquadFilter();
+        const btn = document.getElementById('btn');
+        const orb = document.getElementById('orb');
 
-            osc.type = 'sine'; // Pure tone
+        btn.addEventListener('click', async () => {
+            // 1. Request iPhone Motion Permissions
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                const permission = await DeviceOrientationEvent.requestPermission();
+                if (permission !== 'granted') {
+                    alert('Permission denied. Tilt won\'t work.');
+                    return;
+                }
+            }
+
+            // 2. Setup Audio
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            osc = audioCtx.createOscillator();
+            gain = audioCtx.createGain();
+            filter = audioCtx.createBiquadFilter();
+
+            osc.type = 'sawtooth'; // Gritty, cool sound
             filter.type = 'lowpass';
+            filter.frequency.value = 1000;
             
+            gain.gain.value = 0; // Start silent
+
             osc.connect(filter);
             filter.connect(gain);
-            gain.connect(ctx.destination);
+            gain.connect(audioCtx.destination);
 
             osc.start();
-            gain.gain.value = 0.1;
-            started = true;
-            document.getElementById('label').innerText = "TILT & SHADE";
-        });
-
-        // The Unique Control: Movement
-        window.addEventListener('deviceorientation', (e) => {
-            if (!started) return;
             
-            // Pitch based on Tilt (Gamma)
-            let pitch = Math.abs(e.gamma) * 10 + 200; 
-            osc.frequency.setTargetAtTime(pitch, ctx.currentTime, 0.1);
+            // Fade in
+            gain.gain.setTargetAtTime(0.2, audioCtx.currentTime, 0.1);
 
-            // Visual Glow Shift
-            let hue = Math.abs(e.gamma) * 2;
-            document.getElementById('orb').style.filter = `hue-rotate(${hue}deg)`;
-            document.getElementById('orb').style.transform = `scale(${1 + Math.abs(e.beta)/100})`;
+            // 3. UI Swap
+            btn.classList.add('hidden');
+            orb.classList.remove('hidden');
+
+            // 4. Start Sensors
+            setupSensors();
         });
 
-        // The Unique Control: Light (Using a hack: screen touch pressure/area)
-        // Since mobile browsers block raw light sensor data, we use 'touch size'
-        window.addEventListener('touchmove', (e) => {
-            if (!started) return;
-            let val = e.touches[0].pageY / window.innerHeight;
-            filter.frequency.setTargetAtTime(val * 5000, ctx.currentTime, 0.1);
-        });
+        function setupSensors() {
+            window.addEventListener('deviceorientation', (e) => {
+                // Pitch (Left/Right Tilt)
+                let freq = Math.max(100, Math.min(2000, 200 + (e.gamma * 15)));
+                osc.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.05);
+
+                // Filter (Front/Back Tilt)
+                let cut = Math.max(200, Math.min(5000, 1000 + (e.beta * 40)));
+                filter.frequency.setTargetAtTime(cut, audioCtx.currentTime, 0.05);
+
+                // Visual Glow
+                orb.style.transform = `scale(${1 + Math.abs(e.gamma)/90})`;
+                orb.style.filter = `hue-rotate(${e.beta}deg) brightness(${1 + Math.abs(e.gamma)/50})`;
+            });
+
+            // Touch the orb to "choke" the sound (Volume)
+            window.addEventListener('touchstart', () => gain.gain.setTargetAtTime(0.5, audioCtx.currentTime, 0.05));
+            window.addEventListener('touchend', () => gain.gain.setTargetAtTime(0.2, audioCtx.currentTime, 0.05));
+        }
     </script>
 </body>
 </html>
